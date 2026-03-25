@@ -1,4 +1,4 @@
-import * as tf from "@tensorflow/tfjs-node";
+import * as tf from "@tensorflow/tfjs";
 import YahooFinance from "yahoo-finance2";
 
 const yahooFinance = new YahooFinance();

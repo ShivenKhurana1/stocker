@@ -1,0 +1,172 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #091426;
+  --bg-mid: #12304d;
+  --bg-soft: #194367;
+  --text-main: #f5fbff;
+  --text-muted: #bdd1e3;
+  --accent-cyan: #38dbc5;
+  --accent-amber: #ffbc78;
+  --glass-border: rgba(255, 255, 255, 0.26);
+}
+
+@theme inline {
+  --color-background: var(--bg-deep);
+  --color-foreground: var(--text-main);
+  --font-sans: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text-main);
+  font-family: var(--font-space-grotesk), "Avenir Next", sans-serif;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(56, 219, 197, 0.25), transparent 36%),
+    radial-gradient(circle at 84% 12%, rgba(255, 188, 120, 0.23), transparent 32%),
+    linear-gradient(145deg, var(--bg-deep), var(--bg-mid) 48%, var(--bg-soft));
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(circle at center, #000 28%, transparent 75%);
+  z-index: -1;
+}
+
+.glass-panel {
+  border: 1px solid var(--glass-border);
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+  backdrop-filter: blur(16px);
+  box-shadow: 0 24px 72px rgba(4, 13, 29, 0.46);
+}
+
+.glass-pill {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 0.35rem 0.78rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.field-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.input-glass {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 0.85rem;
+  padding: 0.76rem 0.9rem;
+  background: rgba(5, 20, 36, 0.38);
+  color: var(--text-main);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.input-glass::placeholder {
+  color: rgba(223, 235, 244, 0.6);
+}
+
+.input-glass:focus {
+  outline: none;
+  border-color: rgba(56, 219, 197, 0.95);
+  box-shadow: 0 0 0 4px rgba(56, 219, 197, 0.2);
+}
+
+.aurora {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(46px);
+  opacity: 0.5;
+  animation: float 11s ease-in-out infinite;
+}
+
+.orb-one {
+  width: 300px;
+  height: 300px;
+  top: -80px;
+  left: -90px;
+  background: rgba(56, 219, 197, 0.48);
+}
+
+.orb-two {
+  width: 280px;
+  height: 280px;
+  top: 16%;
+  right: -70px;
+  background: rgba(255, 188, 120, 0.42);
+  animation-delay: -2s;
+}
+
+.orb-three {
+  width: 260px;
+  height: 260px;
+  bottom: -70px;
+  left: 36%;
+  background: rgba(95, 164, 255, 0.4);
+  animation-delay: -4s;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-12px) scale(1.05);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 700ms ease-out both;
+}
+
+.animate-fade-up-delay {
+  animation: fade-up 880ms 110ms ease-out both;
+}
+
+@media (max-width: 768px) {
+  body::before {
+    background-size: 38px 38px;
+  }
+}
+
+@keyframes slide-up-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up-fade 400ms ease-out both;
+}

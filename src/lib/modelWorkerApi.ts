@@ -15,7 +15,7 @@ export type TrainingResult = {
 
 type WorkerMessage =
   | { type: "TRAIN_MODEL"; data: TrainingData; id: string }
-  | { type: "PROGRESS"; data: TrainingProgress }
+  | { type: "PROGRESS"; data: TrainingProgress; id?: string }
   | { type: "COMPLETE"; data: TrainingResult; id: string }
   | { type: "ERROR"; data: { message: string }; id: string };
 

@@ -211,18 +211,28 @@ function PriceChart({
     return `${path} ${command} ${toX(index)} ${toY(value)}`.trim();
   }, "");
 
-  const emaData = calculateEMA(closes, 12);
-  const emaPath = emaData.reduce((path, value, index) => {
-    const command = index === 0 ? "M" : "L";
-    return `${path} ${command} ${toX(index)} ${toY(value)}`.trim();
-  }, "");
+  const emaData = useMemo(() => {
+    if (!showEMA) return [];
+    return calculateEMA(closes, 12);
+  }, [closes, showEMA]);
+  const emaPath = useMemo(() => {
+    return emaData.reduce((path, value, index) => {
+      const command = index === 0 ? "M" : "L";
+      return `${path} ${command} ${toX(index)} ${toY(value)}`.trim();
+    }, "");
+  }, [emaData]);
 
-  const rsiData = calculateRSI(closes, 14);
-  const toRsiY = (val: number) => padding.top + plotHeight - (val / 100) * (plotHeight * 0.3); // Scale RSI to bottom 30%
-  const rsiPath = rsiData.reduce((path, value, index) => {
-    const command = index === 0 ? "M" : "L";
-    return `${path} ${command} ${toX(index)} ${toRsiY(value)}`.trim();
-  }, "");
+  const rsiData = useMemo(() => {
+    if (!showRSI) return [];
+    return calculateRSI(closes, 14);
+  }, [closes, showRSI]);
+  const toRsiY = (val: number) => padding.top + plotHeight - (val / 100) * (plotHeight * 0.3);
+  const rsiPath = useMemo(() => {
+    return rsiData.reduce((path, value, index) => {
+      const command = index === 0 ? "M" : "L";
+      return `${path} ${command} ${toX(index)} ${toRsiY(value)}`.trim();
+    }, "");
+  }, [rsiData]);
 
   const yTicks = Array.from({ length: 5 }, (_, index) => {
     const ratio = index / 4;
@@ -1465,7 +1475,7 @@ function CorrelationMatrix({ correlations }: { correlations: Array<{ symbol: str
             <div className="space-y-3">
               <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden flex items-center px-0.5">
                 <div 
-                  className={`h-1.5 rounded-full transition-all duration-1000 shadow-[0_0_12px_rgba(34,211,238,0.4)] ${
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
                     c.score > 0.7 ? 'bg-cyan-400' : 
                     c.score > 0.4 ? 'bg-cyan-600' : 
                     'bg-slate-500'

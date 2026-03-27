@@ -1,7 +1,0 @@
-{
-  "/api/cached-predict/route": "app/api/cached-predict/route.js",
-  "/api/correlations/route": "app/api/correlations/route.js",
-  "/api/predict/route": "app/api/predict/route.js",
-  "/docs/page": "app/docs/page.js",
-  "/page": "app/page.js"
-}

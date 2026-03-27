@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import { analyzeSentiment, SentimentResult } from "@/lib/sentiment";
 import { calculateReturnCorrelation } from "@/lib/correlation";
+import WalkthroughGuide from "@/components/WalkthroughGuide";
 
 const POPULAR_TICKERS = ["AAPL", "NVDA", "TSLA", "MSFT", "AMZN"];
 
@@ -518,11 +519,13 @@ function Portfolio({
   onRemove,
   onSelect,
   onQuickAdd,
+  "data-tour": dataTour,
 }: {
   items: PortfolioItem[];
   onRemove: (symbol: string) => void;
   onSelect: (symbol: string) => void;
   onQuickAdd: (symbol: string) => void;
+  "data-tour"?: string;
 }) {
   const [quickTicker, setQuickTicker] = useState("");
   const totalValue = items.reduce((sum, item) => sum + item.shares * item.lastPrice, 0);
@@ -558,7 +561,7 @@ function Portfolio({
   }, items[0]);
 
   return (
-    <article className="glass-panel animate-fade-up rounded-3xl p-4 md:p-8 overflow-hidden">
+    <article data-tour={dataTour} className="glass-panel animate-fade-up rounded-3xl p-4 md:p-8 overflow-hidden">
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-semibold text-white">My Portfolio</h3>
         <span className="glass-pill text-[10px]">{items.length} Assets</span>
@@ -1023,6 +1026,7 @@ export default function Home() {
       </div>
 
       <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <WalkthroughGuide hasPrediction={!!prediction} />
         <section className="glass-panel animate-fade-up rounded-3xl p-6 md:p-10 overflow-hidden">
           <p className="glass-pill mb-4 inline-flex">Neural Forecast Lab</p>
           <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
@@ -1059,6 +1063,7 @@ export default function Home() {
                 </label>
                 <input
                   id="symbol"
+                  data-tour="search"
                   className="input-glass"
                   value={symbol}
                   onChange={(event) => setSymbol(event.target.value)}
@@ -1073,6 +1078,7 @@ export default function Home() {
                 </label>
                 <input
                   id="horizon"
+                  data-tour="horizon"
                   className="input-glass"
                   type="number"
                   min={2}
@@ -1086,6 +1092,7 @@ export default function Home() {
 
               <button
                 type="submit"
+                data-tour="predict-btn"
                 disabled={isLoading}
                 className="mt-5 inline-flex w-full items-center justify-center rounded-xl border border-white/30 bg-white/20 px-4 py-3 text-sm font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-white/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -1226,6 +1233,7 @@ export default function Home() {
             }} />
 
             <Portfolio
+              data-tour="portfolio"
               items={portfolio}
               onRemove={removeFromPortfolio}
               onSelect={(sym: string) => {
@@ -1265,7 +1273,7 @@ export default function Home() {
                   {isBacktesting ? 'Training History...' : 'Run Backtest (30d Ago)'}
                 </button>
               </div>
-              <div className="mt-3">
+              <div data-tour="chart" className="mt-3">
                 <PriceChart
                   points={historyPoints}
                   showEMA={showEMA}
@@ -1274,7 +1282,9 @@ export default function Home() {
                   onToggleRSI={() => setShowRSI(!showRSI)}
                 />
 
-                <NewsSentiment news={prediction.news} sentiment={sentiment} />
+                <div data-tour="sentiment">
+                  <NewsSentiment news={prediction.news} sentiment={sentiment} />
+                </div>
                 <BacktestCard result={backtestResult} />
                 <CorrelationMatrix correlations={correlations} />
               </div>
@@ -1287,6 +1297,21 @@ export default function Home() {
         </div>
 
         <HelpSection />
+
+        {/* Restart Tour Button */}
+        <button
+          onClick={() => {
+            localStorage.removeItem("stocker_tour_completed");
+            window.location.reload();
+          }}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-cyan-500/30 bg-slate-950/90 px-4 py-2 text-xs font-medium text-cyan-400 shadow-lg backdrop-blur-md transition-all hover:bg-cyan-500/10 hover:scale-105"
+          title="Restart the walkthrough tour"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Restart Tour
+        </button>
       </main>
     </div>
   );

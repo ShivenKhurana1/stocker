@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const symbol = parseTicker(searchParams.get("symbol"));
     const horizonDays = parseHorizon(searchParams.get("horizon"));
-    const prediction = await predictStockFuture({ symbol, horizonDays });
+    const asOfDate = searchParams.get("asOfDate") || undefined;
+    const prediction = await predictStockFuture({ symbol, horizonDays, asOfDate });
 
     return NextResponse.json(prediction, {
       headers: {

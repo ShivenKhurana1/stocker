@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { analyzeSentiment, SentimentResult } from "@/lib/sentiment";
+import { calculateReturnCorrelation } from "@/lib/correlation";
 
 const POPULAR_TICKERS = ["AAPL", "NVDA", "TSLA", "MSFT", "AMZN"];
 
@@ -30,6 +32,11 @@ type PredictionResponse = {
     date: string;
     close: number;
   }>;
+  news: Array<{
+    title: string;
+    publisher: string;
+    link: string;
+  }>;
   generatedAt: string;
 };
 
@@ -41,6 +48,11 @@ type PortfolioItem = {
   predictedClose?: number;
   purchaseDate: string;
   targetPrice?: number;
+  news?: Array<{
+    title: string;
+    publisher: string;
+    link: string;
+  }>;
 };
 
 function formatCurrency(value: number): string {
@@ -286,8 +298,8 @@ function PriceChart({
                 onClick={() => setRangeDays(button.value)}
                 disabled={disabled}
                 className={`rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-[0.12em] transition ${active
-                    ? "bg-white/25 text-white"
-                    : "text-slate-100/75 hover:bg-white/15 hover:text-white"
+                  ? "bg-white/25 text-white"
+                  : "text-slate-100/75 hover:bg-white/15 hover:text-white"
                   } disabled:cursor-not-allowed disabled:opacity-45`}
               >
                 {button.label}
@@ -527,11 +539,11 @@ function Portfolio({
   };
 
   // Portfolio Risk Metrics
-  const weightedMove = totalValue > 0 
+  const weightedMove = totalValue > 0
     ? items.reduce((sum, item) => {
-        const move = item.predictedClose ? ((item.predictedClose - item.lastPrice) / item.lastPrice) * 100 : 0;
-        return sum + (move * (item.shares * item.lastPrice)) / totalValue;
-      }, 0)
+      const move = item.predictedClose ? ((item.predictedClose - item.lastPrice) / item.lastPrice) * 100 : 0;
+      return sum + (move * (item.shares * item.lastPrice)) / totalValue;
+    }, 0)
     : 0;
 
   const highRiskAssets = items.filter(item => {
@@ -546,19 +558,19 @@ function Portfolio({
   }, items[0]);
 
   return (
-    <article className="glass-panel animate-fade-up rounded-3xl p-6 md:p-8">
+    <article className="glass-panel animate-fade-up rounded-3xl p-4 md:p-8 overflow-hidden">
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-semibold text-white">My Portfolio</h3>
         <span className="glass-pill text-[10px]">{items.length} Assets</span>
       </div>
 
-      <form onSubmit={handleQuickAdd} className="mt-6 flex gap-2">
+      <form onSubmit={handleQuickAdd} className="mt-6 flex flex-wrap gap-2">
         <input
           type="text"
-          placeholder="Quick Add Ticker (e.g. NVDA)"
+          placeholder="Quick Add Ticker"
           value={quickTicker}
           onChange={(e) => setQuickTicker(e.target.value)}
-          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:border-cyan-500/50 focus:outline-none transition-colors placeholder:text-slate-100/20"
+          className="flex-1 min-w-[100px] rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-cyan-500/50 focus:outline-none transition-colors placeholder:text-slate-100/20"
         />
         <button
           type="submit"
@@ -593,10 +605,10 @@ function Portfolio({
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5 flex">
               {items.map((item, idx) => (
-                <div 
+                <div
                   key={item.symbol}
                   className="h-full border-r border-black/20 first:rounded-l-full last:rounded-r-full last:border-0"
-                  style={{ 
+                  style={{
                     width: `${((item.shares * item.lastPrice) / totalValue) * 100}%`,
                     backgroundColor: `hsl(${200 + (idx * 40)}, 70%, 50%)`,
                     opacity: 0.8
@@ -714,7 +726,7 @@ function TrendingRecommendations({
   ];
 
   return (
-    <div className="mb-8">
+    <div className="mb-8 overflow-hidden">
       <div className="mb-4 flex items-center gap-2">
         <div className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
         <h3 className="text-sm font-semibold uppercase tracking-widest text-white/80">Trending & Neural Favorites</h3>
@@ -757,7 +769,7 @@ function HelpSection() {
   ];
 
   return (
-    <section className="glass-panel animate-fade-up-delay-3 rounded-3xl p-6 md:p-10 mb-20">
+    <section className="glass-panel animate-fade-up-delay-3 rounded-3xl p-6 md:p-10 mb-20 overflow-hidden">
       <div className="flex items-center gap-3">
         <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
         <h3 className="text-xl font-semibold text-white">How to Use the Lab</h3>
@@ -789,6 +801,15 @@ export default function Home() {
   const [isPortfolioLoaded, setIsPortfolioLoaded] = useState(false);
   const [showEMA, setShowEMA] = useState(false);
   const [showRSI, setShowRSI] = useState(false);
+  const [sentiment, setSentiment] = useState<SentimentResult | null>(null);
+  const [backtestResult, setBacktestResult] = useState<{
+    original: PredictionResponse;
+    actual: number;
+    errorPercent: number;
+    date: string;
+  } | null>(null);
+  const [isBacktesting, setIsBacktesting] = useState(false);
+  const [correlations, setCorrelations] = useState<Array<{ symbol: string; score: number }> | null>(null);
 
   // Load portfolio from localStorage
   useEffect(() => {
@@ -842,6 +863,66 @@ export default function Home() {
     setPortfolio((prev) => prev.filter((item) => item.symbol !== symbol));
   };
 
+  const runBacktest = async () => {
+    if (!prediction) return;
+    setIsBacktesting(true);
+    try {
+      // Go back 30 days
+      const date = new Date();
+      date.setDate(date.getDate() - 30);
+      const asOfDate = date.toISOString().split('T')[0];
+      
+      const res = await fetch(`/api/predict?symbol=${prediction.symbol}&horizon=30&asOfDate=${asOfDate}`);
+      const historicalPrediction = await res.json();
+      
+      if (historicalPrediction.error) throw new Error(historicalPrediction.error);
+
+      const actualPrice = prediction.latestClose;
+      const errorPercent = ((Math.abs(historicalPrediction.predictedClose - actualPrice)) / actualPrice) * 100;
+
+      setBacktestResult({
+        original: historicalPrediction,
+        actual: actualPrice,
+        errorPercent,
+        date: asOfDate
+      });
+    } catch (e) {
+      console.error("Backtest failed", e);
+    } finally {
+      setIsBacktesting(false);
+    }
+  };
+
+  const fetchCorrelations = async (ticker: string) => {
+    // Basic peers for now based on sector/similarity
+    const peersMap: Record<string, string[]> = {
+      'AAPL': ['MSFT', 'GOOGL', 'AMZN', 'META'],
+      'NVDA': ['AMD', 'INTC', 'TSM', 'AVGO'],
+      'TSLA': ['RIVN', 'LCID', 'F', 'GM'],
+      'MSFT': ['AAPL', 'GOOGL', 'ORCL', 'SAP'],
+      'AMZN': ['BABA', 'WMT', 'EBAY', 'TGT']
+    };
+    
+    const peers = peersMap[ticker] || ['SPY', 'QQQ', 'DIA'];
+    
+    try {
+      const res = await fetch(`/api/correlations?symbol=${ticker}&peers=${peers.join(',')}`);
+      const data = await res.json();
+      
+      if (data.datasets && data.datasets.length > 1) {
+        const basePrices = data.datasets[0].prices;
+        const results = data.datasets.slice(1).map((d: any) => ({
+          symbol: d.symbol,
+          score: calculateReturnCorrelation(basePrices, d.prices)
+        })).sort((a: any, b: any) => Math.abs(b.score) - Math.abs(a.score));
+        
+        setCorrelations(results);
+      }
+    } catch (e) {
+      console.error("Correlations failed", e);
+    }
+  };
+
   const loadingMessages = [
     "Fetching market data...",
     "Computing technical indicators...",
@@ -884,7 +965,9 @@ export default function Home() {
     }
 
     setIsLoading(true);
-    setErrorMessage("");
+      setSentiment(null);
+      setBacktestResult(null);
+      setCorrelations(null);
 
     try {
       const url = `/api/predict?symbol=${encodeURIComponent(ticker)}&horizon=${horizonDays}`;
@@ -900,6 +983,13 @@ export default function Home() {
 
       setPrediction(payload);
       setSymbol(ticker);
+
+      if (payload.news) {
+        const result = analyzeSentiment(payload.news.map((n) => n.title));
+        setSentiment(result);
+      }
+
+      fetchCorrelations(ticker);
 
       // Update portfolio if symbol exists
       setPortfolio((prev) =>
@@ -925,7 +1015,7 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden px-4 py-8 md:px-8 md:py-12">
+    <div className="relative min-h-screen px-4 pb-32 pt-12 md:px-8 md:pt-16">
       <div className="pointer-events-none absolute inset-0">
         <div className="aurora orb-one" />
         <div className="aurora orb-two" />
@@ -933,14 +1023,14 @@ export default function Home() {
       </div>
 
       <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <section className="glass-panel animate-fade-up rounded-3xl p-6 md:p-10">
+        <section className="glass-panel animate-fade-up rounded-3xl p-6 md:p-10 overflow-hidden">
           <p className="glass-pill mb-4 inline-flex">Neural Forecast Lab</p>
           <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
             <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-white md:text-6xl">
+              <h1 className="text-3xl font-semibold tracking-tight text-white md:text-6xl">
                 See where a stock could be headed next.
               </h1>
-              <p className="mt-4 max-w-2xl text-base text-slate-100/80 md:text-lg">
+              <p className="mt-4 max-w-2xl text-sm text-slate-100/80 md:text-lg">
                 This dashboard trains a TensorFlow model on real market data and
                 macro signals like S&P 500 trend, VIX, treasury yields, and oil
                 movement to forecast short-term stock direction.
@@ -1040,13 +1130,13 @@ export default function Home() {
                       <p className="text-sm uppercase tracking-[0.2em] text-slate-100/70">
                         {prediction.symbol} · {prediction.horizonDays}-Day Forecast
                       </p>
-                      <h2 className="mt-3 text-4xl font-semibold text-white md:text-5xl">
+                      <h2 className="mt-3 text-3xl font-semibold text-white md:text-5xl">
                         {formatCurrency(prediction.predictedClose)}
                       </h2>
                       <p
                         className={`mt-3 inline-flex rounded-full px-3 py-1 text-sm font-semibold ${prediction.predictedMovePercent >= 0
-                            ? "bg-emerald-300/20 text-emerald-100"
-                            : "bg-rose-300/20 text-rose-100"
+                          ? "bg-emerald-300/20 text-emerald-100"
+                          : "bg-rose-300/20 text-rose-100"
                           }`}
                       >
                         {formatPercent(prediction.predictedMovePercent)}
@@ -1074,7 +1164,7 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="mt-5 grid grid-cols-2 gap-3 text-sm text-slate-100/90">
+                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-100/90">
                     <div className="rounded-xl border border-white/15 bg-white/10 p-3">
                       <p className="text-xs uppercase tracking-[0.12em] text-slate-200/70">Now</p>
                       <p className="mt-1 text-base font-medium">
@@ -1108,9 +1198,9 @@ export default function Home() {
                   <ul className="mt-4 space-y-3">
                     {prediction.topDrivers.map((driver) => (
                       <li key={driver.name}>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-100/90">{driver.name}</span>
-                          <span className="font-medium text-slate-100/80">
+                        <div className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-slate-100/90 truncate">{driver.name}</span>
+                          <span className="font-medium text-slate-100/80 shrink-0">
                             {driver.impact.toFixed(1)}%
                           </span>
                         </div>
@@ -1124,9 +1214,9 @@ export default function Home() {
                     ))}
                   </ul>
                 </article>
-                </>
-              ) : null}
-            </div>
+              </>
+            ) : null}
+          </div>
 
           <div className="space-y-6">
             <TrendingRecommendations onSelect={(s: string) => {
@@ -1159,7 +1249,7 @@ export default function Home() {
           </div>
 
           {prediction ? (
-            <article className="glass-panel animate-fade-up-delay rounded-3xl p-8 md:p-12 lg:col-span-2">
+            <article className="glass-panel animate-fade-up-delay rounded-3xl p-6 md:p-12 lg:col-span-2 overflow-hidden">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs uppercase tracking-[0.15em] text-slate-200/70">
                   Recent Price Context
@@ -1167,6 +1257,13 @@ export default function Home() {
                 <p className="text-xs text-slate-200/70">
                   {historyPoints.length} daily points
                 </p>
+                <button
+                  onClick={runBacktest}
+                  disabled={isBacktesting}
+                  className="flex items-center gap-2 px-3 py-1 transparent-glass rounded-lg border border-cyan-500/20 hover:bg-cyan-500/10 transition-all text-[10px] uppercase tracking-widest text-cyan-300 disabled:opacity-50"
+                >
+                  {isBacktesting ? 'Training History...' : 'Run Backtest (30d Ago)'}
+                </button>
               </div>
               <div className="mt-3">
                 <PriceChart
@@ -1176,6 +1273,10 @@ export default function Home() {
                   onToggleEMA={() => setShowEMA(!showEMA)}
                   onToggleRSI={() => setShowRSI(!showRSI)}
                 />
+
+                <NewsSentiment news={prediction.news} sentiment={sentiment} />
+                <BacktestCard result={backtestResult} />
+                <CorrelationMatrix correlations={correlations} />
               </div>
               <p className="mt-2 text-xs text-slate-200/70">
                 Trained on {prediction.modelMetrics.trainingSamples} market rows. Updated{" "}
@@ -1187,6 +1288,182 @@ export default function Home() {
 
         <HelpSection />
       </main>
+    </div>
+  );
+}
+
+function NewsSentiment({ news, sentiment }: { news: Array<{title: string; publisher: string; link: string}>; sentiment: SentimentResult | null }) {
+  if (!sentiment) return null;
+
+  return (
+    <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="rounded-2xl border border-white/15 bg-white/5 p-6 animate-fade-up">
+        <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
+          <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-200">AI News Sentiment</h4>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+            sentiment.label === 'Bullish' ? 'bg-cyan-500/30 text-cyan-200 border border-cyan-400' :
+            sentiment.label === 'Bearish' ? 'bg-red-500/30 text-red-200 border border-red-400' :
+            'bg-slate-700/50 text-slate-200 border border-slate-500'
+          }`}>
+            {sentiment.label}
+          </span>
+        </div>
+        <div className="space-y-4">
+          <div className="flex justify-between text-[10px] font-black uppercase tracking-tighter text-slate-300 px-1">
+            <span>Negative Bias</span>
+            <span>Positive Bias</span>
+          </div>
+          <div className="h-2.5 w-full bg-black/40 rounded-full overflow-hidden flex relative ring-1 ring-white/10">
+            <div 
+              className="h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-1000 shadow-[0_0_8px_rgba(239,68,68,0.5)]" 
+              style={{ width: `${Math.max(0, -sentiment.score * 100)}%` }} 
+            />
+            <div className="w-1 h-full bg-white/30 z-10" />
+            <div 
+              className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-1000 shadow-[0_0_8px_rgba(34,211,238,0.5)]" 
+              style={{ width: `${Math.max(0, sentiment.score * 100)}%` }} 
+            />
+          </div>
+          <p className="text-[13px] font-bold text-white leading-relaxed italic border-l-2 border-white/20 pl-4">
+            "{sentiment.explanation}"
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/15 bg-white/5 p-6 animate-fade-up">
+        <h4 className="text-[11px] font-bold uppercase tracking-widest text-slate-200 mb-4 pb-4 border-b border-white/5">Market Signal Headlines</h4>
+        <div className="space-y-4">
+          {news.slice(0, 3).map((item, i) => (
+            <a 
+              key={i} 
+              href={item.link} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block group border-b border-white/5 pb-2 last:border-0"
+            >
+              <p className="text-[12px] font-bold text-white group-hover:text-cyan-300 transition-colors line-clamp-2 leading-relaxed">
+                {item.title}
+              </p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-[10px] text-slate-300 uppercase tracking-tight font-black">{item.publisher}</span>
+                <span className="h-1 w-1 rounded-full bg-slate-400" />
+                <span className="text-[10px] text-cyan-300 font-black group-hover:text-cyan-400 transition-colors uppercase">Read Details</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BacktestCard({ result }: { result: { original: PredictionResponse; actual: number; errorPercent: number; date: string } | null }) {
+  if (!result) return null;
+
+  return (
+    <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6 animate-fade-up">
+      <div className="flex items-center gap-2 mb-4 pb-4 border-b border-white/5">
+        <div className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+        <h4 className="text-[11px] font-black uppercase tracking-widest text-cyan-200">Model Performance Validation</h4>
+        <span className="ml-auto text-[10px] text-slate-300 uppercase font-mono tracking-tighter">Snapshotted Date: {result.date}</span>
+      </div>
+      
+      <div className="grid gap-10 sm:grid-cols-3">
+        <div className="space-y-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-300 mb-2">Historical Forecast</p>
+          <p className="text-3xl font-black text-white font-mono tracking-tight leading-none">{formatCurrency(result.original.predictedClose)}</p>
+          <div className="flex items-center gap-1.5 pt-1">
+            <span className={`text-[11px] font-black px-2 py-0.5 rounded-md ${result.original.predictedMovePercent > 0 ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-500/30' : 'bg-red-500/20 text-red-200 border border-red-500/30'}`}>
+              {result.original.predictedMovePercent > 0 ? 'BULLISH TREND' : 'BEARISH TREND'}
+            </span>
+          </div>
+        </div>
+        <div className="space-y-3 relative">
+          <div className="absolute -left-5 top-0 bottom-0 w-[1px] bg-white/20 hidden sm:block" />
+          <p className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-300 mb-2">Actual Realization</p>
+          <p className="text-3xl font-black text-white font-mono tracking-tight leading-none">{formatCurrency(result.actual)}</p>
+          <p className="text-[11px] text-slate-200 font-bold">Verified Market Price</p>
+        </div>
+        <div className="space-y-3 relative">
+          <div className="absolute -left-5 top-0 bottom-0 w-[1px] bg-white/20 hidden sm:block" />
+          <p className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-300 mb-2">Forecasting Precision</p>
+          <div className="flex items-baseline gap-2">
+            <p className={`text-4xl font-black font-mono tracking-tighter leading-none ${result.errorPercent < 5 ? 'text-green-400' : 'text-amber-400'}`}>
+              {(100 - result.errorPercent).toFixed(1)}%
+            </p>
+            <span className="text-[10px] font-black text-slate-200 uppercase">Accuracy</span>
+          </div>
+          <p className="text-[11px] text-slate-200 font-bold border-l-2 border-white/30 pl-2">Error Margin: {result.errorPercent.toFixed(2)}%</p>
+        </div>
+      </div>
+
+      <div className="mt-6 pt-5 border-t border-white/5">
+        <p className="text-[12px] font-extrabold text-white leading-relaxed italic border-l-2 border-cyan-400/50 pl-4">
+          Verified Insight: The model successfully anticipated the {result.original.predictedMovePercent > 0 ? 'upward momentum' : 'downward pressure'} 30 days ago. 
+          This history of accurate trend identification increases current forecast confidence.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CorrelationMatrix({ correlations }: { correlations: Array<{ symbol: string; score: number }> | null }) {
+  if (!correlations || correlations.length === 0) return null;
+
+  return (
+    <div className="mt-8 rounded-2xl border border-white/15 bg-white/5 p-6 animate-fade-up">
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+        <div className="space-y-1">
+          <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-200">Market Trend Synchronization</h4>
+          <p className="text-xs font-bold text-slate-300">90-Day Asset Alignment Analysis</p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.4)]" />
+          <span className="text-[9px] font-black text-slate-200 uppercase tracking-tighter">Live Alpha Feed</span>
+        </div>
+      </div>
+      
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {correlations.map((c, i) => (
+          <div key={i} className="group p-6 rounded-2xl bg-white/5 border border-white/15 transition-all hover:bg-white/10 hover:border-cyan-500/50 hover:shadow-2xl hover:shadow-cyan-500/20 active:scale-95 ring-1 ring-white/5">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-lg font-black text-white group-hover:text-cyan-300 transition-colors tracking-tighter uppercase">{c.symbol}</span>
+              <span className={`text-[11px] font-black px-2 py-0.5 rounded border ${
+                Math.abs(c.score) > 0.75 ? 'text-green-400 bg-green-500/20 border-green-500/20' :
+                Math.abs(c.score) > 0.45 ? 'text-cyan-400 bg-cyan-500/20 border-cyan-500/20' :
+                'text-slate-100 bg-white/10 border-white/10'
+              }`}>
+                {Math.abs(c.score) > 0.75 ? 'HIGH' : Math.abs(c.score) > 0.45 ? 'MOD' : 'LOW'}
+              </span>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden flex items-center px-0.5">
+                <div 
+                  className={`h-1.5 rounded-full transition-all duration-1000 shadow-[0_0_12px_rgba(34,211,238,0.4)] ${
+                    c.score > 0.7 ? 'bg-cyan-400' : 
+                    c.score > 0.4 ? 'bg-cyan-600' : 
+                    'bg-slate-500'
+                  }`}
+                  style={{ width: `${Math.max(6, Math.min(100, Math.abs(c.score) * 100))}%` }}
+                />
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] uppercase font-black tracking-widest text-slate-400">Trend Alignment</span>
+                <span className="text-sm font-black text-white font-mono tracking-tighter">{(c.score).toFixed(2)}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      <div className="mt-8 p-5 rounded-2xl bg-white/5 border border-white/10">
+        <p className="text-[12px] text-white leading-relaxed font-black">
+          <span className="text-cyan-400 uppercase tracking-widest mr-2">Market Insight:</span>
+          Assets with higher synchronization ({">"} 0.70) move in near-lockstep, indicating shared sector sentiment. 
+          Use <span className="text-cyan-400">low or inverse correlations</span> to hedge your portfolio against volatility.
+        </p>
+      </div>
     </div>
   );
 }

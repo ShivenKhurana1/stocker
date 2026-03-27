@@ -51,6 +51,7 @@ export type PredictionResult = {
   };
   topDrivers: FeatureImpact[];
   history: Array<{ date: string; close: number }>;
+  news: Array<{ title: string; publisher: string; link: string }>;
   generatedAt: string;
 };
 
@@ -580,9 +581,11 @@ async function calculateFeatureImpacts(
 export async function predictStockFuture({
   symbol,
   horizonDays,
+  asOfDate,
 }: {
   symbol: string;
   horizonDays: number;
+  asOfDate?: string;
 }): Promise<PredictionResult> {
   const cleanSymbol = symbol.trim().toUpperCase();
   if (!/^[A-Z0-9.\-^=]{1,10}$/.test(cleanSymbol)) {
@@ -593,18 +596,39 @@ export async function predictStockFuture({
     throw new Error("Horizon must be between 2 and 30 days.");
   }
 
-  const periodEnd = new Date();
-  const periodStart = new Date();
+  const periodEnd = asOfDate ? new Date(asOfDate) : new Date();
+  const periodStart = new Date(periodEnd);
   periodStart.setUTCFullYear(periodStart.getUTCFullYear() - 5);
 
-  const [stockSeries, marketSeries, vixSeries, ratesSeries, oilSeries] =
+  const [stockSeriesFull, marketSeriesFull, vixSeriesFull, ratesSeriesFull, oilSeriesFull, searchResult] =
     await Promise.all([
       fetchPriceSeries(cleanSymbol, periodStart, periodEnd),
       fetchPriceSeries(MACRO_SYMBOLS.market, periodStart, periodEnd),
       fetchPriceSeries(MACRO_SYMBOLS.vix, periodStart, periodEnd),
       fetchPriceSeries(MACRO_SYMBOLS.rates, periodStart, periodEnd),
       fetchPriceSeries(MACRO_SYMBOLS.oil, periodStart, periodEnd),
+      yahooFinance.search(cleanSymbol, { newsCount: 5 }),
     ]);
+
+  const stockSeries = asOfDate 
+    ? stockSeriesFull.filter(p => p.date <= asOfDate)
+    : stockSeriesFull;
+  
+  const marketSeries = asOfDate
+    ? marketSeriesFull.filter(p => p.date <= asOfDate)
+    : marketSeriesFull;
+    
+  const vixSeries = asOfDate
+    ? vixSeriesFull.filter(p => p.date <= asOfDate)
+    : vixSeriesFull;
+    
+  const ratesSeries = asOfDate
+    ? ratesSeriesFull.filter(p => p.date <= asOfDate)
+    : ratesSeriesFull;
+    
+  const oilSeries = asOfDate
+    ? oilSeriesFull.filter(p => p.date <= asOfDate)
+    : oilSeriesFull;
 
   if (stockSeries.length < 320) {
     throw new Error(
@@ -836,6 +860,11 @@ export async function predictStockFuture({
         date: point.date,
         close: round(point.close, 2),
       })),
+      news: searchResult.news?.map(item => ({
+        title: item.title,
+        publisher: item.publisher,
+        link: item.link
+      })) || [],
       generatedAt: new Date().toISOString(),
     };
   } finally {

@@ -12,12 +12,21 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await yahooFinance.quote(symbol);
+    const [quote, searchResult] = await Promise.all([
+      yahooFinance.quote(symbol),
+      yahooFinance.search(symbol, { newsCount: 5 })
+    ]);
+
     return NextResponse.json({
       symbol,
-      price: result.regularMarketPrice || result.postMarketPrice || result.preMarketPrice,
-      currency: result.currency,
-      name: result.longName || result.shortName,
+      price: quote.regularMarketPrice || quote.postMarketPrice || quote.preMarketPrice,
+      currency: quote.currency,
+      name: quote.longName || quote.shortName,
+      news: searchResult.news?.map(item => ({
+        title: item.title,
+        publisher: item.publisher,
+        link: item.link
+      })) || []
     });
   } catch (error) {
     console.error(`Market data error for ${symbol}:`, error);
